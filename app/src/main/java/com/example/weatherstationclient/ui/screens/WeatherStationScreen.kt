@@ -16,7 +16,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.weatherstationclient.domain.WeatherCalculator
 import com.example.weatherstationclient.domain.WeatherStatus
+import com.example.weatherstationclient.ble.BleConnectionState
+import com.example.weatherstationclient.ble.BleDevice
+import com.example.weatherstationclient.ble.BleLogEntry
 import com.example.weatherstationclient.ui.components.BarometerScaleCanvas
+import com.example.weatherstationclient.ui.components.BleControlCard
 import com.example.weatherstationclient.ui.components.ThresholdsLegend
 
 /**
@@ -28,6 +32,14 @@ fun WeatherStationScreen(
     pressure: Float,
     isSensorAvailable: Boolean,
     onManualPressureChange: (Float) -> Unit,
+    isScanning: Boolean,
+    foundDevices: List<BleDevice>,
+    connectionState: BleConnectionState,
+    bleLog: List<BleLogEntry>,
+    onScan: () -> Unit,
+    onConnect: () -> Unit,
+    onDisconnect: () -> Unit,
+    onSendPressure: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -44,6 +56,17 @@ fun WeatherStationScreen(
     ) {
         // Секція заголовку та статус датчика
         HeaderSection(isSensorAvailable = isSensorAvailable)
+
+        BleControlCard(
+            isScanning = isScanning,
+            foundDevices = foundDevices,
+            connectionState = connectionState,
+            logEntries = bleLog,
+            onScan = onScan,
+            onConnect = onConnect,
+            onDisconnect = onDisconnect,
+            onSendPressure = onSendPressure
+        )
 
         // КАРТКА 1: Показники тиску (гПа, мм рт. ст.) та розрахований стан погоди
         PressureMetricsCard(

@@ -8,12 +8,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.lifecycleScope
+import com.example.weatherstationclient.ble.BleDevice
+import com.example.weatherstationclient.ble.MockBleConnector
+import com.example.weatherstationclient.ble.MockBleScanner
 import com.example.weatherstationclient.sensor.PressureSensorManager
 import com.example.weatherstationclient.ui.screens.WeatherStationScreen
 import com.example.weatherstationclient.ui.theme.WeatherStationClientTheme
+import java.util.Locale
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 
 /**
  * Головна точка входу додатку (Activity).
@@ -22,6 +31,11 @@ import com.example.weatherstationclient.ui.theme.WeatherStationClientTheme
 class MainActivity : ComponentActivity() {
 
     private lateinit var sensorManager: PressureSensorManager
+    private lateinit var bleConnector: MockBleConnector
+    private val bleScanner = MockBleScanner()
+    private val isScanning = MutableStateFlow(false)
+    private val foundDevices = MutableStateFlow<List<BleDevice>>(emptyList())
+    private var scanJob: Job? = null
     private var currentPressure by mutableFloatStateOf(1013.25f)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,8 +44,14 @@ class MainActivity : ComponentActivity() {
 
         // Ініціалізація виділеного менеджера сенсорів
         sensorManager = PressureSensorManager(this)
+        bleConnector = MockBleConnector(lifecycleScope)
 
         setContent {
+            val scanning by isScanning.collectAsState()
+            val devices by foundDevices.collectAsState()
+            val connectionState by bleConnector.connectionState.collectAsState()
+            val bleLog by bleConnector.logEntries.collectAsState()
+
             WeatherStationClientTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
                     WeatherStationScreen(
@@ -39,6 +59,17 @@ class MainActivity : ComponentActivity() {
                         isSensorAvailable = sensorManager.isSensorAvailable,
                         onManualPressureChange = { simulatedValue ->
                             currentPressure = simulatedValue
+                        },
+                        isScanning = scanning,
+                        foundDevices = devices,
+                        connectionState = connectionState,
+                        bleLog = bleLog,
+                        onScan = ::scanForDevices,
+                        onConnect = bleConnector::connect,
+                        onDisconnect = bleConnector::disconnect,
+                        onSendPressure = {
+                            val payload = String.format(Locale.US, "PRESSURE_HPA=%.1f", currentPressure)
+                            bleConnector.sendData(payload)
                         },
                         modifier = Modifier.padding(innerPadding)
                     )
@@ -63,5 +94,21 @@ class MainActivity : ComponentActivity() {
     override fun onPause() {
         super.onPause()
         sensorManager.stopListening()
+        scanJob?.cancel()
+        isScanning.value = false
+        bleConnector.disconnect()
+    }
+
+    private fun scanForDevices() {
+        if (isScanning.value) return
+        scanJob = lifecycleScope.launch {
+            isScanning.value = true
+            foundDevices.value = emptyList()
+            try {
+                foundDevices.value = bleScanner.scan()
+            } finally {
+                isScanning.value = false
+            }
+        }
     }
 }
