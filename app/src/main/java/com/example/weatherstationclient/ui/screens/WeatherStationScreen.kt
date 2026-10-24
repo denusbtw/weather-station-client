@@ -21,7 +21,9 @@ import com.example.weatherstationclient.ble.BleDevice
 import com.example.weatherstationclient.ble.BleLogEntry
 import com.example.weatherstationclient.ui.components.BarometerScaleCanvas
 import com.example.weatherstationclient.ui.components.BleControlCard
+import com.example.weatherstationclient.ui.components.CloudSyncCard
 import com.example.weatherstationclient.ui.components.ThresholdsLegend
+import com.example.weatherstationclient.cloud.CloudSyncState
 
 /**
  * Головний екран моніторингу погодної станції (WeatherStationScreen).
@@ -40,6 +42,7 @@ fun WeatherStationScreen(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onSendPressure: () -> Unit,
+    cloudSyncState: CloudSyncState,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -56,6 +59,8 @@ fun WeatherStationScreen(
     ) {
         // Секція заголовку та статус датчика
         HeaderSection(isSensorAvailable = isSensorAvailable)
+
+        CloudSyncCard(state = cloudSyncState)
 
         BleControlCard(
             isScanning = isScanning,

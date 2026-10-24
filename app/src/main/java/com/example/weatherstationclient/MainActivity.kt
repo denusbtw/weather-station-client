@@ -1,6 +1,7 @@
 package com.example.weatherstationclient
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -8,11 +9,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import com.example.weatherstationclient.cloud.FirebaseSensorSync
 import com.example.weatherstationclient.ble.BleDevice
 import com.example.weatherstationclient.ble.MockBleConnector
 import com.example.weatherstationclient.ble.MockBleScanner
@@ -21,6 +26,8 @@ import com.example.weatherstationclient.ui.screens.WeatherStationScreen
 import com.example.weatherstationclient.ui.theme.WeatherStationClientTheme
 import java.util.Locale
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 
@@ -32,6 +39,7 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var sensorManager: PressureSensorManager
     private lateinit var bleConnector: MockBleConnector
+    private val cloudSync by lazy { (application as WeatherStationApplication).cloudSync }
     private val bleScanner = MockBleScanner()
     private val isScanning = MutableStateFlow(false)
     private val foundDevices = MutableStateFlow<List<BleDevice>>(emptyList())
@@ -46,11 +54,31 @@ class MainActivity : ComponentActivity() {
         sensorManager = PressureSensorManager(this)
         bleConnector = MockBleConnector(lifecycleScope)
 
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                while (isActive) {
+                    delay(FirebaseSensorSync.SYNC_INTERVAL_MS)
+                    cloudSync.sendPressure(currentPressure)
+                }
+            }
+        }
+
         setContent {
             val scanning by isScanning.collectAsState()
             val devices by foundDevices.collectAsState()
             val connectionState by bleConnector.connectionState.collectAsState()
             val bleLog by bleConnector.logEntries.collectAsState()
+            val cloudState by cloudSync.state.collectAsState()
+
+            LaunchedEffect(cloudState.isInternetAvailable) {
+                if (!cloudState.isInternetAvailable) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Немає інтернету. Дані очікують синхронізації (Pending).",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
 
             WeatherStationClientTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
@@ -64,6 +92,7 @@ class MainActivity : ComponentActivity() {
                         foundDevices = devices,
                         connectionState = connectionState,
                         bleLog = bleLog,
+                        cloudSyncState = cloudState,
                         onScan = ::scanForDevices,
                         onConnect = bleConnector::connect,
                         onDisconnect = bleConnector::disconnect,
